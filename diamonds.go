@@ -61,10 +61,8 @@ func (t *FabricChaincode) Invoke(stub shim.ChaincodeStubInterface) pb.Response {
 // createDiamond - create a new diamond, store into chaincode state
 // ============================================================
 func (t *FabricChaincode) createDiamond(stub shim.ChaincodeStubInterface, args []string) pb.Response {
-    var err error
+   var err error
  
-    //   0       1       2     3
-    // "asdf", "blue", "35", "bob"
     if len(args) != 4 {
         return shim.Error("Incorrect number of arguments. Expecting 4")
     }
@@ -114,24 +112,19 @@ func (t *FabricChaincode) createDiamond(stub shim.ChaincodeStubInterface, args [
         return shim.Error(err.Error())
     }
  
-    //  ==== Index the diamond to enable origin-based range queries, e.g. return all blue diamonds ====
-    //  An 'index' is a normal key/value entry in state.
-    //  The key is a composite key, with the elements that you want to range query on listed first.
-    //  In our case, the composite key is based on indexName~origin~name.
-    //  This will enable very efficient state range queries based on composite keys matching indexName~origin~*
-    //indexName := "origin~name"
-    //originNameIndexKey, err := stub.CreateCompositeKey(indexName, []string{diamond.Origin, diamond.Name})
-    //if err != nil {
-    //  return shim.Error(err.Error())
-    //}
-    //  Save index entry to state. Only the key name is needed, no need to store a duplicate copy of the diamond.
-    //  Note - passing a 'nil' value will effectively delete the key from state, therefore we pass null character as value
-    //value := []byte{0x00}
-//  stub.PutState(originNameIndexKey, value)
+    indexName := "origin~name"
+    originNameIndexKey, err := stub.CreateCompositeKey(indexName, []string{diamond.Origin, diamond.Name})
+    if err != nil {
+        return shim.Error(err.Error())
+    }
+ 
+    value := []byte{0x00}
+    stub.PutState(originNameIndexKey, value)
  
     // ==== Diamond saved and indexed. Return success ====
     fmt.Println("- end init diamond")
     return shim.Success(nil)
+
 }
  
 // ===============================================
@@ -225,7 +218,65 @@ func (t *FabricChaincode) transferDiamond(stub shim.ChaincodeStubInterface, args
     if err != nil {
         return shim.Error("Failed to delete state:" + err.Error())
     }
+
+    indexName := "origin~name"
+    originNameIndexKey, err := stub.CreateCompositeKey(indexName, []string{diamondJSON.Origin, diamondJSON.Name})
+    if err != nil {
+        return shim.Error(err.Error())
+    }
+ 
+    err = stub.DelState(originNameIndexKey)
+    if err != nil {
+        return shim.Error("Failed to delete state:" + err.Error())
+    }
+    return shim.Success(nil)
+
  
 }
+
+func (t *FabricChaincode) transferdiamondsBasedOnOrigin(stub shim.ChaincodeStubInterface, args []string) pb.Response {
+
+    if len(args) < 2 {
+        return shim.Error("Incorrect number of arguments. Expecting 2")
+    }
+ 
+    origin := args[0]
+    newOwner := strings.ToLower(args[1])
+    originateddiamondResultsIterator, err := stub.GetStateByPartialCompositeKey("origin~name", []string{origin})
+    if err != nil {
+        return shim.Error(err.Error())
+    }
+    defer originateddiamondResultsIterator.Close()
+ 
+newOwner
+    var i int
+    for i = 0; originateddiamondResultsIterator.HasNext(); i++ {
+        // Note that we don't get the value (2nd return variable), we'll just get the diamond name from the composite key
+        responseRange, err := originateddiamondResultsIterator.Next()
+        if err != nil {
+            return shim.Error(err.Error())
+        }
+ 
+        objectType, compositeKeyParts, err := stub.SplitCompositeKey(responseRange.Key)
+        if err != nil {
+            return shim.Error(err.Error())
+        }
+        returnedOrigin := compositeKeyParts[0]
+        returneddiamondName := compositeKeyParts[1]
+        fmt.Printf("- found a diamond from index:%s origin:%s name:%s\n", objectType, returnedOrigin, returneddiamondName)
+ 
+        response := t.transferDiamond(stub, []string{returneddiamondName, newOwner})
+        if response.Status != shim.OK {
+            return shim.Error("Transfer failed: " + response.Message)
+        }
+    }
+ 
+    responsePayload := fmt.Sprintf("Transferred %d %s diamonds to %s", i, origin, newOwner)
+    fmt.Println("- end transferdiamondsBasedOnOrigin: " + responsePayload)
+    return shim.Success([]byte(responsePayload))
+
+ 
+}
+
 
 
