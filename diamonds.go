@@ -197,3 +197,35 @@ func (t *FabricChaincode) transferDiamond(stub shim.ChaincodeStubInterface, args
     fmt.Println("- end transferDiamond (success)")
     return shim.Success(nil)
 }
+
+  func (t *FabricChaincode) delete(stub shim.ChaincodeStubInterface, args []string) pb.Response {
+    var jsonResp string
+    var diamondJSON diamond
+    if len(args) != 1 {
+        return shim.Error("Incorrect number of arguments. Expecting 1")
+    }
+    diamondName := args[0]
+ 
+    valAsbytes, err := stub.GetState(diamondName) //get the diamond from chaincode state
+    if err != nil {
+        jsonResp = "{\"Error\":\"Failed to get state for " + diamondName + "\"}"
+        return shim.Error(jsonResp)
+    } else if valAsbytes == nil {
+        jsonResp = "{\"Error\":\"Diamond does not exist: " + diamondName + "\"}"
+        return shim.Error(jsonResp)
+    }
+ 
+    err = json.Unmarshal([]byte(valAsbytes), &diamondJSON)
+    if err != nil {
+        jsonResp = "{\"Error\":\"Failed to decode JSON of: " + diamondName + "\"}"
+        return shim.Error(jsonResp)
+    }
+ 
+    err = stub.DelState(diamondName) //remove the diamond from chaincode state
+    if err != nil {
+        return shim.Error("Failed to delete state:" + err.Error())
+    }
+ 
+}
+
+
